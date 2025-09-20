@@ -1,9 +1,7 @@
-
-<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Mapbox GL JS map</title>
+<title>Franky's iNaturalist Obervations</title>
 <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.css" rel="stylesheet">
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.js"></script>
@@ -17,9 +15,9 @@ body { margin: 0; padding: 0; }
 <script>
     mapboxgl.accessToken = 'pk.eyJ1IjoiZmFkYWlyIiwiYSI6ImNtZTV0bnJmaTEwOG8yaXNjc2pkb3Y4NWoifQ.64vUrUuDN2KBb8KVb8NqwQ';
     const map = new mapboxgl.Map({
-        container: 'map', // container ID
-        center: [0.00, 51.48], // starting position [lng, lat]. Note that lat must be set between -90 and 90
-        zoom: 9 // starting zoom
+        container: 'map',
+        center: [-4.50, 56.0],
+        zoom: 9
         
     });
     map.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -38,6 +36,75 @@ body { margin: 0; padding: 0; }
     map.addControl(new mapboxgl.AttributionControl({
         compact: true
     }));
+
+
+// iNaturalist API integration
+
+    map.on('load', () => {
+        fetch('https://api.inaturalist.org/v1/observations?user_id=fadair&per_page=500')
+            .then(res => res.json())
+            .then(data => {
+                const features = data.results
+                    .filter(obs => obs.geojson && obs.geojson.coordinates)
+                    .map(obs => ({
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: obs.geojson.coordinates
+                        },
+                        properties: {
+                            id: obs.id,
+                            common: obs.taxon && obs.taxon.preferred_common_name ? obs.taxon.preferred_common_name : 'Unknown',
+                            species: obs.taxon ? obs.taxon.name : 'Unknown',
+                            url: obs.uri,
+                            photo: obs.photos[0] ? obs.photos[0].url.replace('square', 'medium') : ''
+                        }
+                    }));
+                
+                const geojson = {
+                    type: 'FeatureCollection',
+                    features: features
+                };
+
+                map.addSource('inat', {
+                    type: 'geojson',
+                    data: geojson
+                });
+
+                map.addLayer({
+                    id: 'inat-points',
+                    type: 'circle',
+                    source: 'inat',
+                    paint: {
+                        'circle-radius': 6,
+                        'circle-color': '#ff5500',
+                        'circle-stroke-width': 1,
+                        'circle-stroke-color': '#fff'
+                    }
+                });
+
+                map.on('click', 'inat-points', (e) => {
+                    const props = e.features[0].properties;
+                    const html = `
+                        <strong style="text-transform: capitalize;">${props.common}</strong><br>
+                        <em>${props.species}</em><br>
+                        ${props.photo ? `<img src="${props.photo}" height="200" width="200" style="object-fit: cover;">` : ''}
+                        <a href="${props.url}" target="_blank">View on iNaturalist</a><br>
+                    `;
+                    new mapboxgl.Popup()
+                        .setLngLat(e.lngLat)
+                        .setHTML(html)
+                        .addTo(map);
+                });
+
+                map.on('mouseenter', 'inat-points', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', 'inat-points', () => {
+                    map.getCanvas().style.cursor = '';
+                });
+            });
+    });
 </script>
 
 </body>
